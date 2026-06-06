@@ -79,31 +79,6 @@ def extract_text(uploaded_file):
     return ""
 
 
-def evaluate_retrieval(distances):
-    if not distances:
-        return {
-            "label": "No sources found",
-            "average_distance": None,
-            "best_distance": None,
-        }
-
-    average_distance = sum(distances) / len(distances)
-    best_distance = min(distances)
-
-    if best_distance < 0.8:
-        label = "Strong retrieval"
-    elif best_distance < 1.3:
-        label = "Medium retrieval"
-    else:
-        label = "Weak retrieval"
-
-    return {
-        "label": label,
-        "average_distance": average_distance,
-        "best_distance": best_distance,
-    }
-
-
 def reset_chat():
     st.session_state.messages = []
 
@@ -117,11 +92,8 @@ if "document_uploaded" not in st.session_state:
 if "document_name" not in st.session_state:
     st.session_state.document_name = ""
 
-if "last_sources" not in st.session_state:
-    st.session_state.last_sources = []
-
-if "last_evaluation" not in st.session_state:
-    st.session_state.last_evaluation = None
+if "last_retrieved_chunks" not in st.session_state:
+    st.session_state.last_retrieved_chunks = []
 
 
 embedding_model = load_embedding_model()
@@ -139,8 +111,7 @@ with st.sidebar:
         st.success("Document ready")
         st.write(st.session_state.document_name)
 
-    show_sources = st.checkbox("Show retrieved sources", value=True)
-    show_evaluation = st.checkbox("Show RAG evaluation", value=True)
+    show_sources = st.checkbox("Show retrieved sources", value=False)
 
     if st.button("Clear chat"):
         reset_chat()
@@ -176,8 +147,7 @@ if uploaded_file is not None and uploaded_file.name != st.session_state.document
         st.session_state.document_uploaded = True
         st.session_state.document_name = uploaded_file.name
         st.session_state.messages = []
-        st.session_state.last_sources = []
-        st.session_state.last_evaluation = None
+        st.session_state.last_retrieved_chunks = []
 
         st.success(f"Uploaded and indexed {uploaded_file.name}.")
         st.info(f"Created {len(chunks)} searchable chunks.")
@@ -188,23 +158,6 @@ if st.session_state.document_uploaded:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
-
-            if message["role"] == "assistant" and "evaluation" in message:
-                evaluation = message["evaluation"]
-
-                with st.expander("RAG evaluation"):
-                    st.write(f"Retrieval quality: {evaluation['label']}")
-
-                    if evaluation["best_distance"] is not None:
-                        st.write(f"Best distance: {evaluation['best_distance']:.3f}")
-                        st.write(f"Average distance: {evaluation['average_distance']:.3f}")
-
-            if message["role"] == "assistant" and "sources" in message:
-                with st.expander("Sources used"):
-                    for index, source in enumerate(message["sources"], start=1):
-                        st.write(f"Source {index}")
-                        st.write(f"Distance: {source['distance']:.3f}")
-                        st.write(source["text"])
 
     question = st.chat_input("Ask a question about your notes")
 
@@ -227,38 +180,12 @@ if st.session_state.document_uploaded:
                     query_embeddings=[question_embedding],
                     n_results=3,
                     where={"document_name": st.session_state.document_name},
-                    include=["documents", "metadatas", "distances"],
                 )
 
                 retrieved_chunks = results["documents"][0]
-                retrieved_distances = results["distances"][0]
-                retrieved_metadatas = results["metadatas"][0]
+                st.session_state.last_retrieved_chunks = retrieved_chunks
 
-                sources = []
-
-                for chunk, distance, metadata in zip(
-                    retrieved_chunks,
-                    retrieved_distances,
-                    retrieved_metadatas,
-                ):
-                    sources.append(
-                        {
-                            "text": chunk,
-                            "distance": distance,
-                            "chunk_index": metadata["chunk_index"],
-                        }
-                    )
-
-                evaluation = evaluate_retrieval(retrieved_distances)
-
-                context_parts = []
-
-                for index, source in enumerate(sources, start=1):
-                    context_parts.append(
-                        f"Source {index}:\n{source['text']}"
-                    )
-
-                context = "\n\n".join(context_parts)
+                context = "\n\n".join(retrieved_chunks)
 
                 client = InferenceClient(token=hf_token)
 
@@ -268,8 +195,6 @@ You are StudyMate AI, a friendly study tutor.
 Use only the retrieved notes below to answer the user's question.
 If the answer is not in the notes, say:
 "I cannot find that in the uploaded notes."
-
-At the end of your answer, mention which source number you used.
 
 Retrieved notes:
 {context}
@@ -297,39 +222,18 @@ User question:
 
             st.write(answer)
 
-            if show_evaluation:
-                with st.expander("RAG evaluation"):
-                    st.write(f"Retrieval quality: {evaluation['label']}")
-
-                    if evaluation["best_distance"] is not None:
-                        st.write(f"Best distance: {evaluation['best_distance']:.3f}")
-                        st.write(f"Average distance: {evaluation['average_distance']:.3f}")
-
-                    if evaluation["label"] == "Weak retrieval":
-                        st.warning("The retrieved notes may not match the question well.")
-
-            if show_sources:
-                with st.expander("Sources used"):
-                    for index, source in enumerate(sources, start=1):
-                        st.write(f"Source {index}")
-                        st.write(f"Distance: {source['distance']:.3f}")
-                        st.write(source["text"])
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.button("Helpful", key=f"helpful-{len(st.session_state.messages)}")
-
-            with col2:
-                st.button("Not helpful", key=f"not-helpful-{len(st.session_state.messages)}")
-
         st.session_state.messages.append(
             {
                 "role": "assistant",
                 "content": answer,
-                "sources": sources,
-                "evaluation": evaluation,
             }
         )
+
+    if show_sources and st.session_state.last_retrieved_chunks:
+        st.subheader("Retrieved Sources")
+
+        for index, chunk in enumerate(st.session_state.last_retrieved_chunks, start=1):
+            with st.expander(f"Source chunk {index}"):
+                st.write(chunk)
 else:
     st.info("Upload a .txt or .pdf file to start asking questions.")
