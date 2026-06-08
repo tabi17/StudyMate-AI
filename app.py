@@ -48,7 +48,7 @@ with st.sidebar:
 
     uploaded_files = st.file_uploader(
         "Upload files",
-        type=["txt", "pdf"],
+        type=["txt", "pdf", "jpg", "jpeg", "png"],
         accept_multiple_files=True,
     )
 
@@ -120,7 +120,7 @@ with st.sidebar:
 
 
 if not available_documents:
-    st.info("Upload one or more .txt or .pdf files to start.")
+    st.info("Upload one or more .txt, .pdf, .jpg, .jpeg, or .png files to start.")
 else:
     if search_all:
         st.caption("Searching all uploaded documents.")

@@ -23,6 +23,7 @@ def split_document_pages(pages):
     for page in pages:
         page_number = page["page"]
         page_text = page["text"]
+        source_type = page.get("source_type", "unknown")
 
         chunks = split_text(page_text)
 
@@ -31,6 +32,7 @@ def split_document_pages(pages):
                 {
                     "text": chunk,
                     "page": page_number,
+                    "source_type": source_type,
                     "chunk_index": chunk_index,
                 }
             )

@@ -32,6 +32,7 @@ def add_document_to_vector_store(document_name, chunk_records):
         {
             "document_name": document_name,
             "page": record["page"],
+            "source_type": record.get("source_type", "unknown"),
             "chunk_index": record["chunk_index"],
         }
         for record in chunk_records
@@ -89,9 +90,10 @@ def search_sources(question, selected_documents, n_results):
         sources.append(
             {
                 "text": text,
-                "document_name": metadata["document_name"],
-                "page": metadata["page"],
-                "chunk_index": metadata["chunk_index"],
+                "document_name": metadata.get("document_name", "Unknown document"),
+                "page": metadata.get("page", "Unknown"),
+                "source_type": metadata.get("source_type", "unknown"),
+                "chunk_index": metadata.get("chunk_index", "Unknown"),
                 "distance": distance,
             }
         )
@@ -123,6 +125,7 @@ def get_document_chunks(selected_documents, limit=12):
                 "text": text,
                 "document_name": metadata.get("document_name", "Unknown document"),
                 "page": metadata.get("page", "Unknown"),
+                "source_type": metadata.get("source_type", "unknown"),
                 "chunk_index": metadata.get("chunk_index", "Unknown"),
                 "distance": None,
             }
