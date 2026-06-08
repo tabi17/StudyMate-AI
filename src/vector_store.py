@@ -89,11 +89,44 @@ def search_sources(question, selected_documents, n_results):
         sources.append(
             {
                 "text": text,
-                "document_name": metadata.get("document_name", "Unknown document"),
-                "page": metadata.get("page", "Unknown"),
-                "chunk_index": metadata.get("chunk_index", "Unknown"),
+                "document_name": metadata["document_name"],
+                "page": metadata["page"],
+                "chunk_index": metadata["chunk_index"],
                 "distance": distance,
             }
         )
 
     return sources
+
+
+def get_document_chunks(selected_documents, limit=12):
+    collection = get_collection()
+
+    get_args = {
+        "include": ["documents", "metadatas"],
+        "limit": limit,
+    }
+
+    if selected_documents:
+        if len(selected_documents) == 1:
+            get_args["where"] = {"document_name": selected_documents[0]}
+        else:
+            get_args["where"] = {"document_name": {"$in": selected_documents}}
+
+    results = collection.get(**get_args)
+
+    sources = []
+
+    for text, metadata in zip(results["documents"], results["metadatas"]):
+        sources.append(
+            {
+                "text": text,
+                "document_name": metadata.get("document_name", "Unknown document"),
+                "page": metadata.get("page", "Unknown"),
+                "chunk_index": metadata.get("chunk_index", "Unknown"),
+                "distance": None,
+            }
+        )
+
+    return sources
+
