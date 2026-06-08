@@ -4,7 +4,12 @@ from src.document_loader import extract_document
 from src.rag_pipeline import answer_question
 from src.study_tools import run_study_tool
 from src.text_splitter import split_document_pages
-from src.vector_store import add_document_to_vector_store, list_documents
+from src.vector_store import (
+    add_document_to_vector_store,
+    delete_document,
+    get_document_stats,
+    list_documents,
+)
 
 
 st.set_page_config(
@@ -14,7 +19,7 @@ st.set_page_config(
 )
 
 st.title("StudyMate AI")
-st.write("Upload study notes, choose sources, then ask questions or generate study tools.")
+st.write("Upload study notes, manage your document library, then ask questions.")
 
 
 def reset_chat():
@@ -39,9 +44,6 @@ def add_assistant_message(content, sources=None, evaluation=None):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "indexed_files" not in st.session_state:
-    st.session_state.indexed_files = set()
-
 
 with st.sidebar:
     st.header("Documents")
@@ -52,31 +54,73 @@ with st.sidebar:
         accept_multiple_files=True,
     )
 
+    replace_existing = st.checkbox("Replace existing files with same name", value=True)
+
     if uploaded_files:
         for uploaded_file in uploaded_files:
-            if uploaded_file.name not in st.session_state.indexed_files:
-                pages = extract_document(uploaded_file)
+            pages = extract_document(uploaded_file)
 
-                if not pages:
-                    st.error(f"Could not extract text from {uploaded_file.name}.")
-                    continue
+            if not pages:
+                st.error(f"Could not extract text from {uploaded_file.name}.")
+                continue
 
-                chunk_records = split_document_pages(pages)
+            chunk_records = split_document_pages(pages)
 
-                if not chunk_records:
-                    st.error(f"No readable text found in {uploaded_file.name}.")
-                    continue
+            if not chunk_records:
+                st.error(f"No readable text found in {uploaded_file.name}.")
+                continue
 
-                chunk_count = add_document_to_vector_store(
-                    document_name=uploaded_file.name,
-                    chunk_records=chunk_records,
-                )
+            chunk_count = add_document_to_vector_store(
+                document_name=uploaded_file.name,
+                chunk_records=chunk_records,
+                replace_existing=replace_existing,
+            )
 
-                st.session_state.indexed_files.add(uploaded_file.name)
-                st.success(f"Indexed {uploaded_file.name}")
-                st.caption(f"{chunk_count} chunks created")
+            st.success(f"Indexed {uploaded_file.name}")
+            st.caption(f"{chunk_count} chunks created")
 
     available_documents = list_documents()
+    document_stats = get_document_stats()
+
+    st.divider()
+
+    st.subheader("Library")
+
+    if not available_documents:
+        st.caption("No indexed documents yet.")
+    else:
+        for document_name in available_documents:
+            stats = document_stats.get(
+                document_name,
+                {
+                    "chunk_count": 0,
+                    "source_types": ["unknown"],
+                },
+            )
+
+            source_types = ", ".join(stats["source_types"])
+
+            with st.expander(document_name):
+                st.write(f"Chunks: {stats['chunk_count']}")
+                st.write(f"Type: {source_types}")
+
+        documents_to_delete = st.multiselect(
+            "Delete documents",
+            options=available_documents,
+        )
+
+        if st.button("Delete selected documents"):
+            if not documents_to_delete:
+                st.warning("Choose at least one document to delete.")
+            else:
+                total_deleted = 0
+
+                for document_name in documents_to_delete:
+                    total_deleted += delete_document(document_name)
+
+                reset_chat()
+                st.success(f"Deleted {total_deleted} chunks.")
+                st.rerun()
 
     st.divider()
 
@@ -142,9 +186,6 @@ else:
                 }
             )
 
-            with st.chat_message("user"):
-                st.write(tool_prompt)
-
             with st.chat_message("assistant"):
                 with st.spinner(f"Running {study_tool}..."):
                     try:
@@ -157,14 +198,6 @@ else:
                         sources = result["sources"]
 
                         st.write(answer)
-
-                        if show_sources and sources:
-                            with st.expander("Sources used"):
-                                for index, source in enumerate(sources, start=1):
-                                    st.write(f"Source {index}")
-                                    st.write(f"Document: {source['document_name']}")
-                                    st.write(f"Page: {source['page']}")
-                                    st.write(source["text"])
 
                         add_assistant_message(
                             content=answer,
@@ -197,6 +230,7 @@ else:
                         for index, source in enumerate(message["sources"], start=1):
                             st.write(f"Source {index}")
                             st.write(f"Document: {source['document_name']}")
+                            st.write(f"Type: {source.get('source_type', 'unknown')}")
                             st.write(f"Page: {source['page']}")
 
                             if source["distance"] is not None:
@@ -233,26 +267,6 @@ else:
                         evaluation = result["evaluation"]
 
                         st.write(answer)
-
-                        if show_evaluation:
-                            with st.expander("RAG evaluation"):
-                                st.write(f"Retrieval quality: {evaluation['label']}")
-
-                                if evaluation["best_distance"] is not None:
-                                    st.write(f"Best distance: {evaluation['best_distance']:.3f}")
-                                    st.write(f"Average distance: {evaluation['average_distance']:.3f}")
-
-                                if evaluation["label"] == "Weak retrieval":
-                                    st.warning("The retrieved notes may not match the question well.")
-
-                        if show_sources:
-                            with st.expander("Sources used"):
-                                for index, source in enumerate(sources, start=1):
-                                    st.write(f"Source {index}")
-                                    st.write(f"Document: {source['document_name']}")
-                                    st.write(f"Page: {source['page']}")
-                                    st.write(f"Distance: {source['distance']:.3f}")
-                                    st.write(source["text"])
 
                         add_assistant_message(
                             content=answer,
