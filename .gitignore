@@ -2,4 +2,4 @@
 .env
 __pycache__/
 chroma_db/
-old/versions_app/
+old_versions_app/
