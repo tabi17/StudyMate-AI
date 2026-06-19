@@ -26,7 +26,7 @@ def generate_answer(prompt):
         messages=[
             {
                 "role": "system",
-                "content": "You are StudyMate AI. Answer clearly, simply, and only using the retrieved notes.",
+                "content": "You are an industrial maintenance assistant. Give grounded, source-based technical answers and do not invent unsafe procedures.",
             },
             {
                 "role": "user",

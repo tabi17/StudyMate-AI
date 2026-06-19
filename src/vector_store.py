@@ -50,7 +50,15 @@ def delete_document(document_name):
     return deleted_count
 
 
-def add_document_to_vector_store(document_name, chunk_records, replace_existing=True):
+def add_document_to_vector_store(
+    document_name,
+    chunk_records,
+    replace_existing=True,
+    base_metadata=None,
+):
+    if base_metadata is None:
+        base_metadata = {}
+
     if replace_existing and document_exists(document_name):
         delete_document(document_name)
 
@@ -69,6 +77,11 @@ def add_document_to_vector_store(document_name, chunk_records, replace_existing=
             "page": record["page"],
             "source_type": record.get("source_type", "unknown"),
             "chunk_index": record["chunk_index"],
+            "document_type": base_metadata.get("document_type", "unknown"),
+            "equipment_id": base_metadata.get("equipment_id", ""),
+            "component": base_metadata.get("component", ""),
+            "plant_area": base_metadata.get("plant_area", ""),
+            "fault_code": base_metadata.get("fault_code", ""),
         }
         for record in chunk_records
     ]
@@ -159,7 +172,13 @@ def search_sources(question, selected_documents, n_results):
                 "page": metadata.get("page", "Unknown"),
                 "source_type": metadata.get("source_type", "unknown"),
                 "chunk_index": metadata.get("chunk_index", "Unknown"),
+                "document_type": metadata.get("document_type", "unknown"),
+                "equipment_id": metadata.get("equipment_id", ""),
+                "component": metadata.get("component", ""),
+                "plant_area": metadata.get("plant_area", ""),
+                "fault_code": metadata.get("fault_code", ""),
                 "distance": distance,
+                "retrieval_method": "vector",
             }
         )
 
@@ -193,6 +212,47 @@ def get_document_chunks(selected_documents, limit=12):
                 "source_type": metadata.get("source_type", "unknown"),
                 "chunk_index": metadata.get("chunk_index", "Unknown"),
                 "distance": None,
+                "document_type": metadata.get("document_type", "unknown"),
+                "equipment_id": metadata.get("equipment_id", ""),
+                "component": metadata.get("component", ""),
+                "plant_area": metadata.get("plant_area", ""),
+                "fault_code": metadata.get("fault_code", ""),            }
+        )
+
+    return sources
+
+def get_all_sources(selected_documents=None):
+    collection = get_collection()
+
+    get_args = {
+        "include": ["documents", "metadatas"],
+    }
+
+    if selected_documents:
+        if len(selected_documents) == 1:
+            get_args["where"] = {"document_name": selected_documents[0]}
+        else:
+            get_args["where"] = {"document_name": {"$in": selected_documents}}
+
+    results = collection.get(**get_args)
+
+    sources = []
+
+    for text, metadata in zip(results["documents"], results["metadatas"]):
+        sources.append(
+            {
+                "text": text,
+                "document_name": metadata.get("document_name", "Unknown document"),
+                "page": metadata.get("page", "Unknown"),
+                "source_type": metadata.get("source_type", "unknown"),
+                "chunk_index": metadata.get("chunk_index", "Unknown"),
+                "document_type": metadata.get("document_type", "unknown"),
+                "equipment_id": metadata.get("equipment_id", ""),
+                "component": metadata.get("component", ""),
+                "plant_area": metadata.get("plant_area", ""),
+                "fault_code": metadata.get("fault_code", ""),
+                "distance": None,
+                "retrieval_method": "keyword",
             }
         )
 

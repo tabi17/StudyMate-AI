@@ -2,7 +2,7 @@ import streamlit as st
 
 from src.document_loader import extract_document
 from src.rag_pipeline import answer_question
-from src.study_tools import run_study_tool
+from src.maintenance_tools import run_study_tool
 from src.text_splitter import split_document_pages
 from src.vector_store import (
     add_document_to_vector_store,
@@ -13,13 +13,16 @@ from src.vector_store import (
 
 
 st.set_page_config(
-    page_title="StudyMate AI",
-    page_icon="📚",
+    page_title="Industrial Maintenance RAG Assistant",
+    page_icon="",
     layout="centered",
 )
 
-st.title("StudyMate AI")
-st.write("Upload study notes, manage your document library, then ask questions.")
+st.title("Industrial Maintenance RAG Assistant")
+st.write(
+    "Upload maintenance documents, then ask technical questions about equipment, "
+    "faults, and procedures."
+)
 
 
 def reset_chat():
@@ -41,6 +44,27 @@ def add_assistant_message(content, sources=None, evaluation=None):
     st.session_state.messages.append(message)
 
 
+def show_source(source, index):
+    st.write(f"Source {index}")
+    st.write(f"Document: {source.get('document_name', 'Unknown document')}")
+    st.write(f"Type: {source.get('source_type', 'unknown')}")
+    st.write(f"Document type: {source.get('document_type', 'unknown')}")
+    st.write(f"Equipment ID: {source.get('equipment_id', '')}")
+    st.write(f"Component: {source.get('component', '')}")
+    st.write(f"Plant area: {source.get('plant_area', '')}")
+    st.write(f"Fault code: {source.get('fault_code', '')}")
+    st.write(f"Page: {source.get('page', 'Unknown')}")
+    st.write(f"Retrieval: {source.get('retrieval_method', 'unknown')}")
+
+    if source.get("distance") is not None:
+        st.write(f"Vector distance: {source['distance']:.3f}")
+
+    if source.get("keyword_score") is not None:
+        st.write(f"Keyword score: {source['keyword_score']:.3f}")
+
+    st.write(source.get("text", ""))
+
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -48,8 +72,28 @@ if "messages" not in st.session_state:
 with st.sidebar:
     st.header("Documents")
 
+    st.subheader("Document Metadata")
+
+    document_type = st.selectbox(
+        "Document type",
+        options=[
+            "manual",
+            "procedure",
+            "troubleshooting guide",
+            "inspection report",
+            "maintenance record",
+            "alarm list",
+            "other",
+        ],
+    )
+
+    equipment_id = st.text_input("Equipment ID", placeholder="Example: P-204")
+    component = st.text_input("Component", placeholder="Example: centrifugal pump")
+    plant_area = st.text_input("Plant area", placeholder="Example: cooling water system")
+    fault_code = st.text_input("Fault / alarm code", placeholder="Example: E-45")
+
     uploaded_files = st.file_uploader(
-        "Upload files",
+        "Upload manuals, procedures, reports, or images",
         type=["txt", "pdf", "jpg", "jpeg", "png"],
         accept_multiple_files=True,
     )
@@ -74,6 +118,13 @@ with st.sidebar:
                 document_name=uploaded_file.name,
                 chunk_records=chunk_records,
                 replace_existing=replace_existing,
+                base_metadata={
+                    "document_type": document_type,
+                    "equipment_id": equipment_id,
+                    "component": component,
+                    "plant_area": plant_area,
+                    "fault_code": fault_code,
+                },
             )
 
             st.success(f"Indexed {uploaded_file.name}")
@@ -142,20 +193,21 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("Study Tools")
+    st.subheader("Maintenance Tools")
 
-    study_tool = st.selectbox(
-        "Choose tool",
+    maintenance_tool = st.selectbox(
+        "Choose maintenance tool",
         options=[
-            "Summarize",
-            "Flashcards",
-            "Quiz",
-            "Explain Simply",
-            "Study Plan",
+            "Troubleshooting Steps",
+            "Procedure Summary",
+            "Safety Checklist",
+            "Maintenance Plan",
+            "Fault Report Summary",
+            "Root Cause Hypotheses",
         ],
     )
 
-    run_tool_button = st.button("Run study tool")
+    run_tool_button = st.button("Run maintenance tool")
 
     st.divider()
 
@@ -177,7 +229,7 @@ else:
         if not search_all and not selected_documents:
             st.warning("Choose at least one document or turn on Search all documents.")
         else:
-            tool_prompt = f"Run study tool: {study_tool}"
+            tool_prompt = f"Run maintenance tool: {maintenance_tool}"
 
             st.session_state.messages.append(
                 {
@@ -187,10 +239,10 @@ else:
             )
 
             with st.chat_message("assistant"):
-                with st.spinner(f"Running {study_tool}..."):
+                with st.spinner(f"Running {maintenance_tool}..."):
                     try:
                         result = run_study_tool(
-                            tool_name=study_tool,
+                            tool_name=maintenance_tool,
                             selected_documents=search_documents,
                         )
 
@@ -218,27 +270,24 @@ else:
                     with st.expander("RAG evaluation"):
                         st.write(f"Retrieval quality: {evaluation['label']}")
 
-                        if evaluation["best_distance"] is not None:
+                        if evaluation.get("best_distance") is not None:
                             st.write(f"Best distance: {evaluation['best_distance']:.3f}")
                             st.write(f"Average distance: {evaluation['average_distance']:.3f}")
 
                         if evaluation["label"] == "Weak retrieval":
-                            st.warning("The retrieved notes may not match the question well.")
+                            st.warning("The retrieved documents may not match the question well.")
+
+                        if "retrieval_methods" in evaluation:
+                            st.write(
+                                f"Retrieval methods: {', '.join(evaluation['retrieval_methods'])}"
+                            )
 
                 if show_sources and "sources" in message:
                     with st.expander("Sources used"):
                         for index, source in enumerate(message["sources"], start=1):
-                            st.write(f"Source {index}")
-                            st.write(f"Document: {source['document_name']}")
-                            st.write(f"Type: {source.get('source_type', 'unknown')}")
-                            st.write(f"Page: {source['page']}")
+                            show_source(source, index)
 
-                            if source["distance"] is not None:
-                                st.write(f"Distance: {source['distance']:.3f}")
-
-                            st.write(source["text"])
-
-    question = st.chat_input("Ask a question about your selected notes")
+    question = st.chat_input("Ask a maintenance question about your selected documents")
 
     if question:
         if not search_all and not selected_documents:
@@ -255,7 +304,7 @@ else:
                 st.write(question)
 
             with st.chat_message("assistant"):
-                with st.spinner("Searching your notes..."):
+                with st.spinner("Searching maintenance documents..."):
                     try:
                         result = answer_question(
                             question=question,
